@@ -183,7 +183,7 @@ with tab_profile:
 
             # Load the profiles CSV to fetch the latest profile
 
-            profiles_df = pd.read_csv('authors_profiles.csv')
+            profiles_df = data
             profile_row = profiles_df.loc[profiles_df['oaid'] == oaid]
 
             if not profile_row.empty:
@@ -227,7 +227,7 @@ with tab_profile:
 
             # Load the profiles CSV to fetch the latest profile
 
-            profiles_df = pd.read_csv('authors_profiles.csv')
+            profiles_df = data
             profile_row = profiles_df.loc[profiles_df['oaid'] == oaid]
 
             if not profile_row.empty:
@@ -245,7 +245,7 @@ with tab_profile:
         else:
             st.sidebar.success("You have already confirmed 'No'.")
 with tab_csv:
-    df = pd.read_csv(filename)
+    df = data
     st.data_editor(df)
 
 with tab_graph:
