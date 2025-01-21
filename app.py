@@ -20,7 +20,7 @@ except FileNotFoundError:
 st.set_page_config(page_title="Profile Builder", layout="wide", initial_sidebar_state="expanded")
 
 # Add tabs
-tab_profile, tab_graph = st.tabs(["Profile Builder", "Graph"])
+tab_profile, tab_csv, tab_graph, = st.tabs(["Profile Builder", "Database", "Graph"])
 
 with tab_profile:
     sidebar_logo_path = "logo_sidebar/logo.png"
@@ -37,48 +37,96 @@ with tab_profile:
 
     if input_mode == "Name":
         # Input Author's Name
-        author_name = st.sidebar.text_input("Enter Author Name")
+        st.session_state.author_name = st.sidebar.text_input("Enter Author Name","Paul Atreides")
         institution = 'Imperial College London'
     else:
         # Input OpenAlex ID and optional name
-        openalex_id = st.sidebar.text_input("Enter OpenAlex ID")
-        author_name = st.sidebar.text_input("Enter Author Name")
+        openalex_id = st.sidebar.text_input("Enter OpenAlex ID", "A123")
+        st.session_state.author_name = st.sidebar.text_input("Enter Author Name","Ellen Ripley")
         institution = st.sidebar.text_input("Institution")
 
     # Button to initiate the process
     search_button = st.sidebar.button("Search and generate profile")
 
     if search_button:
-        if input_mode == "Name" and author_name:
-            # Normalize the case of the input name
-            author_name_normalized = author_name.strip().lower()
+        if input_mode == "Name" and st.session_state.author_name.strip():
+            try:
+                # Access OpenAlex to get information for the author
+                oaid, name = findNameAndPopulate(st.session_state.author_name.strip())
 
-            # Access OpenAlex to get information for the author
-            oaid, name = findNameAndPopulate(author_name)
+                # Normalize the 'name' column for comparison
+                data['name_normalised'] = data['name'].astype(str).str.lower().str.strip()
 
-            # Normalize the 'name' column
-            data['name_normalised'] = data['name'].astype(str).str.lower().str.strip()
-            
-            # Check for duplicates using the normalized name
-            if author_name_normalized in data['name_normalised'].values:
-                st.warning(f"{name.title()} is already in the database.")
+                # Check for duplicates
+                if st.session_state.author_name.strip().lower() in data['name_normalised'].values:
+                    st.warning(f"{name.title()} is already in the database.")
+                else:
+                    # Add the author to the DataFrame
+                    new_row = {"oaid": oaid, "name": name, "institution": institution}
+                    data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
+
+                    # Drop the temporary 'name_normalised' column
+                    data = data.drop(columns=['name_normalised'])
+
+                    # Save the updated CSV
+                    data.to_csv(filename, index=False)
+
+                    # Fetch papers for the latest author and update the JSON
+                    with st.spinner("Fetching papers..."):
+                        author_data, result_count = fetch_papers_and_update_json(
+                            filename, output_json="authors_papers.json"
+                        )
+
+                    # Display a success message
+                    if result_count > 0:
+                        st.success(f"Added {name.title()} (OpenAlex ID: {oaid}) to the database. Found {result_count} papers.")
+                    else:
+                        st.warning(f"Added {name.title()} (OpenAlex ID: {oaid}) to the database, but no papers were found.")
+
+                    with st.spinner("Generating profile..."):
+                        generate_profile_for_latest_entry(
+                            json_file="authors_papers.json",
+                            output_csv="authors_profiles.csv"
+                        )
+                        st.success(f"Profile for {name.title()} has been generated and saved.")
+
+            except ValueError as e:
+                st.error(str(e))
+
+        elif input_mode == "OpenAlex ID" and openalex_id:
+            # Use the OpenAlex ID directly to fetch papers
+            oaid = openalex_id.strip()
+            name = st.session_state.author_name.strip() if st.session_state.author_name else "Unknown Author"
+
+            # Normalize the `name` and `oaid` for comparison
+            data['name_normalized'] = data['name'].astype(str).str.lower().str.strip()
+            data['oaid_normalized'] = data['oaid'].astype(str).str.strip()
+
+            # Check if the author already exists in the DataFrame
+            is_duplicate = (
+                (data['oaid_normalized'] == oaid) &
+                (data['name_normalized'] == name.lower())
+            ).any()
+
+            if is_duplicate:
+                st.warning(f"{name.title()} (OpenAlex ID: {oaid}) is already in the database.")
             else:
                 # Add the author to the DataFrame
                 new_row = {"oaid": oaid, "name": name, "institution": institution}
                 data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
 
-                # Drop the temporary 'name_normalized' column
-                data = data.drop(columns=['name_normalised'])
+                # Drop temporary columns
+                data = data.drop(columns=['name_normalized', 'oaid_normalized'])
 
                 # Save the updated CSV
                 data.to_csv(filename, index=False)
 
-                # Fetch papers for the latest author and update the JSON
+                # Fetch papers for the given OpenAlex ID and update the JSON
                 with st.spinner(text='Fetching papers'):
                     author_data, result_count = fetch_papers_and_update_json(
                         filename, output_json='authors_papers.json'
                     )
-                
+
                     # Display a success message with the result count
                     if result_count > 0:
                         st.success(f"Added {name.title()} (OpenAlex ID: {oaid}) to the database. Found {result_count} papers.")
@@ -91,40 +139,6 @@ with tab_profile:
                         output_csv='authors_profiles.csv'
                     )
                     st.success(f"Profile for {name.title()} has been generated and saved.")
-
-        elif input_mode == "OpenAlex ID" and openalex_id:
-            # Use the OpenAlex ID directly to fetch papers
-            oaid = openalex_id.strip()
-            name = author_name.strip() if author_name else "Unknown Author"
-
-            # Add the author to the DataFrame
-            new_row = {"oaid": oaid, "name": name, "institution": institution}
-            data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
-
-            # Save the updated CSV
-            data.to_csv(filename, index=False)
-
-            # Fetch papers for the given OpenAlex ID and update the JSON
-            with st.spinner(text='Fetching papers'):
-                author_data, result_count = fetch_papers_and_update_json(
-                    filename, output_json='authors_papers.json'
-                )
-                
-                # Display a success message with the result count
-                if result_count > 0:
-                    st.success(f"Added {name.title()} (OpenAlex ID: {oaid}) to the database. Found {result_count} papers.")
-                else:
-                    st.warning(f"Added {name.title()} (OpenAlex ID: {oaid}) to the database, but no papers were found.")
-
-            with st.spinner(text='Generating profile'):
-                generate_profile_for_latest_entry(
-                    json_file='authors_papers.json',
-                    output_csv='authors_profiles.csv'
-                )
-                st.success(f"Profile for {name.title()} has been generated and saved.")
-
-        else:
-            st.error("Please provide the required input to proceed.")
         
         # Load the profiles CSV to fetch the latest profile
         profiles_df = pd.read_csv('authors_profiles.csv')
@@ -137,20 +151,6 @@ with tab_profile:
             st.write(latest_profile)
         else:
             st.error(f"No profile found for {name.title()} (OAID: {oaid}). Please check the data.")
-
-    # Access OpenAlex to get information for the author
-    oaid, name = findNameAndPopulate(author_name)
-
-    # Load the profiles CSV to fetch the latest profile
-
-    profiles_df = pd.read_csv('authors_profiles.csv')
-    profile_row = profiles_df.loc[profiles_df['oaid'] == oaid]
-
-    if not profile_row.empty:
-        # Extract and display the profile
-        latest_profile = profile_row.iloc[0]['profile_llm']
-    else:
-        st.error(f"No profile found for {name.title()} (OAID: {oaid}). Please check the data.")
 
     # Initialize session state for feedback
     if "feedback" not in st.session_state:
@@ -178,6 +178,20 @@ with tab_profile:
 
         # Button to submit input and regenerate profile
         if st.sidebar.button("Submit Input"):
+            # Access OpenAlex to get information for the author
+            oaid, name = findNameAndPopulate(st.session_state.author_name)
+
+            # Load the profiles CSV to fetch the latest profile
+
+            profiles_df = pd.read_csv('authors_profiles.csv')
+            profile_row = profiles_df.loc[profiles_df['oaid'] == oaid]
+
+            if not profile_row.empty:
+                # Extract and display the profile
+                latest_profile = profile_row.iloc[0]['profile_llm']
+            else:
+                st.error(f"No profile found for {name.title()} (OAID: {oaid}). Please check the data.")
+                
             if user_input.strip():
                 print(f"User Input: {user_input}")  # Debug print
 
@@ -208,6 +222,19 @@ with tab_profile:
     if feedback == "No":
         # Check session state to persist the confirmation
         if not st.session_state.no_confirmed:
+                            # Access OpenAlex to get information for the author
+            oaid, name = findNameAndPopulate(st.session_state.author_name)
+
+            # Load the profiles CSV to fetch the latest profile
+
+            profiles_df = pd.read_csv('authors_profiles.csv')
+            profile_row = profiles_df.loc[profiles_df['oaid'] == oaid]
+
+            if not profile_row.empty:
+                # Extract and display the profile
+                latest_profile = profile_row.iloc[0]['profile_llm']
+            else:
+                st.error(f"No profile found for {name.title()} (OAID: {oaid}). Please check the data.")
             print("Feedback: No")  # Debug print
             profiles_df.loc[profiles_df['oaid'] == oaid, 'input'] = "No"
             profiles_df.to_csv('authors_profiles.csv', index=False)
@@ -217,6 +244,9 @@ with tab_profile:
             st.session_state.no_confirmed = True
         else:
             st.sidebar.success("You have already confirmed 'No'.")
+with tab_csv:
+    df = pd.read_csv(filename)
+    st.data_editor(df)
 
 with tab_graph:
     st.header("Cluster Visualisation")

@@ -91,14 +91,14 @@ def fetch_papers_and_update_json(input_csv, output_json):
         output_data = []
 
     # Check if the author already exists in the JSON
-    author_exists = any(author['author_id'] == oaid for author in output_data)
+    author_exists = any(author['oaid'] == oaid for author in output_data)
 
     if author_exists:
         print(f"Author {author_name} (OAID: {oaid}) already exists in the JSON.")
     else:
         # Add the latest author's data to the JSON structure
         output_data.append({
-            'author_id': oaid,
+            'oaid': oaid,
             'name': author_name,
             'papers': papers
         })
@@ -109,4 +109,4 @@ def fetch_papers_and_update_json(input_csv, output_json):
 
         print(f"Updated JSON with {author_name} (OAID: {oaid}).")
 
-    return {'author_id': oaid, 'name': author_name, 'papers': papers}, result_count
+    return {'oaid': oaid, 'name': author_name, 'papers': papers}, result_count

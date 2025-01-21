@@ -57,7 +57,7 @@ def query_openai_profile(titles_and_abstracts, author_name):
 
 def generate_profile_for_latest_entry(json_file, output_csv):
     """
-    Generate a profile for the latest entry in the JSON file and update the CSV.
+    Generate a profile for the latest entry in the CSV file and match it with the JSON data.
     """
     # Load papers from the JSON file
     with open(json_file, 'r', encoding='utf-8') as f:
@@ -68,27 +68,35 @@ def generate_profile_for_latest_entry(json_file, output_csv):
         print("No authors found in the JSON file.")
         return
 
-    # Get the latest author
-    latest_author = authors_data[-1]  # Assuming JSON is ordered; latest entry is last
-    oaid = latest_author['author_id']
-    name = latest_author['name']
-    
     # Load or initialize the output CSV
     if os.path.exists(output_csv):
         profiles_df = pd.read_csv(output_csv)
     else:
         profiles_df = pd.DataFrame(columns=['oaid', 'name', 'profile_llm', 'classification'])
 
-    # Check if the profile already exists
-    existing_profile_index = profiles_df.index[profiles_df['oaid'] == oaid].tolist()
-    if existing_profile_index:
-        existing_profile_index = existing_profile_index[0]
-        if not pd.isna(profiles_df.at[existing_profile_index, 'profile_llm']):
-            print(f"Profile already exists for {name} (OAID: {oaid}). Skipping.")
-            return
+    # Get the latest entry in the CSV
+    if profiles_df.empty:
+        print("The profiles CSV is empty. No latest entry to process.")
+        return
 
-    # Get the top 10 papers
-    papers = latest_author.get('papers', [])
+    latest_entry = profiles_df.iloc[-1]  # Retrieve the last row
+    oaid_normalized = latest_entry['oaid'].lower().strip()
+    name_normalized = latest_entry['name'].lower().strip()
+
+    # Match the latest entry with the JSON data
+    matched_author = next(
+        (author for author in authors_data
+         if author['oaid'].lower().strip() == oaid_normalized and
+         author['name'].lower().strip() == name_normalized),
+        None
+    )
+
+    if not matched_author:
+        print(f"No matching author found in the JSON file for {latest_entry['name']} (OAID: {latest_entry['oaid']}).")
+        return
+
+    # Extract matched author's data
+    papers = matched_author.get('papers', [])
     selected_papers = papers[:10]  # Top 10 papers
     titles_and_abstracts = "\n".join(
         f"Title: {paper['title']}\nAbstract: {paper['abstract']}"
@@ -97,31 +105,37 @@ def generate_profile_for_latest_entry(json_file, output_csv):
 
     # Generate the profile and challenges using OpenAI
     if titles_and_abstracts.strip():
-        profile_text, classification = query_openai_profile(titles_and_abstracts, name)
+        profile_text, classification = query_openai_profile(titles_and_abstracts, latest_entry['name'])
     else:
-        profile_text = f"No abstracts available to generate a detailed profile for {name}."
+        profile_text = f"No abstracts available to generate a detailed profile for {latest_entry['name']}."
         classification = []
 
-    # Convert classification list to a JSON string
     classification_str = json.dumps(classification)
 
-    # Update or add the profile in the DataFrame
-    if existing_profile_index:
+    # Check if the profile already exists
+    existing_profile_index = profiles_df[
+        (profiles_df['oaid'].str.lower().str.strip() == oaid_normalized) &
+        (profiles_df['name'].str.lower().str.strip() == name_normalized)
+    ].index
+
+    if not existing_profile_index.empty:
+        existing_profile_index = existing_profile_index[0]
         profiles_df.at[existing_profile_index, 'profile_llm'] = profile_text
         profiles_df.at[existing_profile_index, 'classification'] = classification_str
     else:
+        # Add a new row
         new_row = pd.DataFrame([{
-            'oaid': oaid, 
-            'name': name, 
-            'profile_llm': profile_text, 
-            'classification': classification
+            'oaid': matched_author['oaid'],
+            'name': matched_author['name'],
+            'profile_llm': profile_text,
+            'classification': classification_str
         }])
         profiles_df = pd.concat([profiles_df, new_row], ignore_index=True)
 
     # Save the updated CSV
     profiles_df.to_csv(output_csv, index=False)
 
-    print(f"Profile for {name} (OAID: {oaid}) has been saved to {output_csv}")
+    print(f"Profile for {latest_entry['name']} (OAID: {latest_entry['oaid']}) has been saved to {output_csv}")
 
 def regenerate_profile(existing_profile, user_input):
     """
