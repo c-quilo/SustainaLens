@@ -44,6 +44,7 @@ def fetch_papers_and_update_json(input_csv, output_json):
     # Get the latest entry from the CSV
     latest_entry = df.iloc[-1]
     oaid_url = latest_entry['oaid']
+    print(oaid_url)
     author_name = latest_entry['name']
     oaid = oaid_url
 
