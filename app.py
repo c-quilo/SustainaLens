@@ -20,7 +20,7 @@ except FileNotFoundError:
 st.set_page_config(page_title="Profile Builder", layout="wide", initial_sidebar_state="expanded")
 
 # Add tabs
-tab_profile, tab_csv, tab_graph, = st.tabs(["Profile Builder", "Database", "Graph"])
+tab_profile, tab_csv = st.tabs(["Profile Builder", "Database"])
 
 with tab_profile:
     sidebar_logo_path = "logo_sidebar/logo.png"
@@ -253,61 +253,3 @@ with tab_csv:
     df = data
     st.data_editor(df)
 
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import PCA
-from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, HoverTool
-
-with tab_graph:
-    st.header("Cluster Visualization with TF-IDF")
-
-    if st.button("Generate and Plot Clusters"):
-        try:
-            # Read the CSV
-            data
-        except FileNotFoundError:
-            st.error("No profiles found. Please add profiles first.")
-            st.stop()
-
-        # Prepare text data
-        data["text_to_embed"] = data.apply(
-            lambda row: row["profile_llm_human"] if pd.notna(row["profile_llm_human"]) else row["profile_llm"],
-            axis=1
-        )
-        data = data[data["text_to_embed"].notna()]
-
-        if data.empty:
-            st.error("No valid profiles to process.")
-            st.stop()
-
-        # Generate embeddings using TF-IDF
-        vectorizer = TfidfVectorizer(max_features=300)  # Use 300 features for embeddings
-        embeddings = vectorizer.fit_transform(data["text_to_embed"].tolist()).toarray()
-
-        # Reduce dimensionality with PCA for visualization
-        pca = PCA(n_components=2, random_state=42)
-        reduced_embeddings = pca.fit_transform(embeddings)
-
-        # Create Bokeh plot
-        source = ColumnDataSource(data={
-            "x": reduced_embeddings[:, 0],
-            "y": reduced_embeddings[:, 1],
-            "name": data["name"].tolist(),
-        })
-
-        plot = figure(
-            title="Clusters of Researcher Profiles (TF-IDF + PCA)",
-            x_axis_label="PCA 1",
-            y_axis_label="PCA 2",
-            tools="pan,zoom_in,zoom_out,reset,save"
-        )
-        plot.scatter(x="x", y="y", source=source, size=10, color="blue", alpha=0.8)
-
-        # Add hover tool for researcher names
-        hover = HoverTool()
-        hover.tooltips = [("Name", "@name")]
-        plot.add_tools(hover)
-
-        # Display the plot
-        st.bokeh_chart(plot)

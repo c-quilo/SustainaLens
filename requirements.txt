@@ -2,6 +2,3 @@ streamlit
 pandas
 pyalex
 openai
-bokeh
-umap-learn
-scikit-learn
