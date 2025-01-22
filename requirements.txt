@@ -2,3 +2,6 @@ streamlit
 pandas
 pyalex
 openai
+bokeh
+umap-learn
+sentence-transformers
