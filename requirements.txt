@@ -4,4 +4,4 @@ pyalex
 openai
 bokeh
 umap-learn
-sentence-transformers
+scikit-learn
