@@ -253,12 +253,70 @@ with tab_csv:
     df = data
     st.data_editor(df)
 
+from sentence_transformers import SentenceTransformer
+import pandas as pd
+import numpy as np
+import umap
+from bokeh.plotting import figure
+from bokeh.models import ColumnDataSource, HoverTool
+from bokeh.io import output_notebook, show
+
+# Load SentenceTransformer model
+model_name = "sentence-transformers/all-MiniLM-L6-v2"
+model = SentenceTransformer(model_name)
+
 with tab_graph:
     st.header("Cluster Visualisation")
 
-    # Load CSV and embeddings data
-    try:
-        data = pd.read_csv('authors_profiles.csv')
-    except FileNotFoundError:
-        st.error("No profiles found. Please add profiles first.")
-        st.stop()
+    # Button to trigger the embedding process
+    if st.button("Plot"):
+        # Read the CSV
+        try:
+            data
+        except FileNotFoundError:
+            st.error("No profiles found. Please add profiles first.")
+            st.stop()
+
+        # Prepare data for embedding
+        data["text_to_embed"] = data.apply(
+            lambda row: row["profile_llm_human"] if pd.notna(row["profile_llm_human"]) else row["profile_llm"],
+            axis=1
+        )
+
+        # Drop rows with no text to embed
+        data = data[data["text_to_embed"].notna()]
+
+        if data.empty:
+            st.error("No valid profiles to process.")
+            st.stop()
+
+        # Generate embeddings
+        profiles = data["text_to_embed"].tolist()
+        embeddings = model.encode(profiles)
+
+        # Reduce dimensions with UMAP
+        reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, n_components=2, random_state=42)
+        reduced_embeddings = reducer.fit_transform(embeddings)
+
+        # Create Bokeh plot
+        source = ColumnDataSource(data={
+            "x": reduced_embeddings[:, 0],
+            "y": reduced_embeddings[:, 1],
+            "name": data["name"].tolist(),
+        })
+
+        plot = figure(
+            title="Clusters of Researcher Profiles (UMAP + Embeddings)",
+            x_axis_label="UMAP 1",
+            y_axis_label="UMAP 2",
+            tools="pan,zoom_in,zoom_out,reset,save"
+        )
+        plot.scatter(x="x", y="y", source=source, size=10, color="blue", alpha=0.8)
+
+        # Add hover tool for researcher names
+        hover = HoverTool()
+        hover.tooltips = [("Name", "@name")]
+        plot.add_tools(hover)
+
+        # Display the plot
+        st.bokeh_chart(plot)
