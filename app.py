@@ -14,7 +14,7 @@ filename = "authors_profiles.csv"
 try:
     data = pd.read_csv(filename)
 except FileNotFoundError:
-    data = pd.DataFrame(columns=["name", "oaid", "institution", "profile_llm", "human_input", "profile_llm_human", "classification", "input"])
+    data = pd.DataFrame(columns=["name", "oaid", "institution", "email", "profile_llm", "human_input", "profile_llm_human", "classification", "input"])
 
 # Set the Streamlit theme to Light
 st.set_page_config(page_title="Profile Builder", layout="wide", initial_sidebar_state="expanded")
@@ -39,11 +39,15 @@ with tab_profile:
         # Input Author's Name
         st.session_state.author_name = st.sidebar.text_input("Enter Author Name","Paul Atreides")
         institution = 'Imperial College London'
+        # Add an optional email input
+        email = st.sidebar.text_input("Enter Email (optional)")
     else:
         # Input OpenAlex ID and optional name
         openalex_id = st.sidebar.text_input("Enter OpenAlex ID", "A123")
         st.session_state.author_name = st.sidebar.text_input("Enter Author Name","Ellen Ripley")
         institution = st.sidebar.text_input("Institution")
+        # Add an optional email input
+        email = st.sidebar.text_input("Enter Email (optional)")
 
     # Button to initiate the process
     search_button = st.sidebar.button("Search and generate profile")
@@ -62,7 +66,7 @@ with tab_profile:
                     st.warning(f"{name.title()} is already in the database.")
                 else:
                     # Add the author to the DataFrame
-                    new_row = {"oaid": oaid, "name": name, "institution": institution}
+                    new_row = {"oaid": oaid, "name": name, "institution": institution, "email": email}
                     data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
 
                     # Drop the temporary 'name_normalised' column
@@ -97,7 +101,7 @@ with tab_profile:
             # Use the OpenAlex ID directly to fetch papers
             oaid = openalex_id.strip()
             name = st.session_state.author_name.strip() if st.session_state.author_name else "Unknown Author"
-
+            
             # Normalize the `name` and `oaid` for comparison
             data['name_normalized'] = data['name'].astype(str).str.lower().str.strip()
             data['oaid_normalized'] = data['oaid'].astype(str).str.strip()
@@ -112,7 +116,7 @@ with tab_profile:
                 st.warning(f"{name.title()} (OpenAlex ID: {oaid}) is already in the database.")
             else:
                 # Add the author to the DataFrame
-                new_row = {"oaid": oaid, "name": name, "institution": institution}
+                new_row = {"oaid": oaid, "name": name, "institution": institution, "email": email}
                 data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
 
                 # Drop temporary columns
